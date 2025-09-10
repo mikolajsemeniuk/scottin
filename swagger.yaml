@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: Scootin' Aboot API
+  description: REST API for scooter event collection and querying.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    EventType:
+      type: string
+      enum: [trip_start, trip_end, location_update]
+
+    Event:
+      type: object
+      required: [type, timestamp]
+      properties:
+        type:
+          $ref: "#/components/schemas/EventType"
+        timestamp:
+          type: string
+          format: date-time
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+
+    Scooter:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [free, occupied]
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        updated_at:
+          type: string
+          format: date-time
+
+paths:
+  /scooters/{id}/events:
+    post:
+      summary: Report a scooter event
+      description: >
+        Scooters send events when starting a trip, ending a trip, or updating location.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Event"
+      responses:
+        "201":
+          description: Event created successfully
+        "400":
+          description: Invalid input
+        "401":
+          description: Invalid API key
+
+  /scooters:
+    get:
+      summary: Query scooters in a rectangular area
+      parameters:
+        - in: query
+          name: lat1
+          required: true
+          schema:
+            type: number
+            format: double
+        - in: query
+          name: lng1
+          required: true
+          schema:
+            type: number
+            format: double
+        - in: query
+          name: lat2
+          required: true
+          schema:
+            type: number
+            format: double
+        - in: query
+          name: lng2
+          required: true
+          schema:
+            type: number
+            format: double
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [free, occupied]
+      responses:
+        "200":
+          description: List of scooters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Scooter"
+        "401":
+          description: Invalid API key
