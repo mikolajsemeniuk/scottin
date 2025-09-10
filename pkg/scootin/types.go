@@ -79,14 +79,14 @@ type UpdateScooterInput struct {
 }
 
 func NewUpdateScooterInput(r *http.Request) (UpdateScooterInput, error) {
+	var out UpdateScooterInput
 	ID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		return UpdateScooterInput{}, ErrCannotParseQuery
+		return out, ErrCannotParseQuery
 	}
 
-	var out UpdateScooterInput
 	if err := json.NewDecoder(r.Body).Decode(&out); err != nil {
-		return UpdateScooterInput{}, err
+		return out, err
 	}
 
 	if err := out.Status.Valid(); err != nil {
