@@ -125,18 +125,18 @@ func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 	}
 	defer tx.Rollback()
 
-	currentScooter, err := s.FindScooter(ctx, sc.ID)
+	current, err := s.FindScooter(ctx, sc.ID)
 	if err != nil {
 		return err
 	}
 
-	if err := s.validateScooterUpdate(currentScooter, sc); err != nil {
+	if err := s.validateScooterUpdate(current, sc); err != nil {
 		return err
 	}
 
+	query := "UPDATE scooters SET status = $1, latitude = $2, longitude = $3, client_id = $4, updated = $5 WHERE id = $6"
 	args := []any{sc.Status, sc.Latitude, sc.Longitude, sc.ClientID, sc.Updated, sc.ID}
-
-	result, err := tx.ExecContext(ctx, "UPDATE scooters SET status = $1, latitude = $2, longitude = $3, client_id = $4, updated = $5 WHERE id = $6", args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update scooter: %w", err)
 	}
