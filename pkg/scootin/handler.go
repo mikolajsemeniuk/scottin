@@ -45,11 +45,6 @@ func (h *HTTPHandler) FindScooters(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scooters, err := h.storage.FindScooters(ctx, input.Latitude1, input.Longitude1, input.Latitude2, input.Longitude2, string(input.Status))
-	if errors.Is(err, ErrNoScootersFound) {
-		http.Error(w, "no scooters found", http.StatusNotFound)
-		return
-	}
-
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -76,11 +71,17 @@ func (h *HTTPHandler) UpdateScooter(w http.ResponseWriter, r *http.Request) {
 		Status:    string(input.Status),
 		Latitude:  input.Latitude,
 		Longitude: input.Longitude,
+		Updated:   input.Timestamp,
 	}
 
 	err = h.storage.UpdateScooter(ctx, scooter)
 	if errors.Is(err, ErrScooterNotFound) {
-		http.Error(w, "scooter not found", http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	if errors.Is(err, ErrScooterOccupied) || errors.Is(err, ErrReleaseScooter) {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 
@@ -89,7 +90,7 @@ func (h *HTTPHandler) UpdateScooter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *HTTPHandler) Elements(w http.ResponseWriter, _ *http.Request) {

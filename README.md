@@ -1,3 +1,10 @@
+# XYZ
+
+* dodanie movementu
+* dodanie unit testów
+* dodanie lintera
+* dodanie autentykacji
+
 1. Czym jest transakcja i czym się różni od procedury
 Transakcja to spójna jednostka pracy w bazie danych, która musi spełniać warunki ACID (atomowość, spójność, izolacja, trwałość). Procedura to zapisany zbiór instrukcji SQL. Różnica: transakcja gwarantuje bezpieczeństwo danych, a procedura to tylko program w bazie – może zawierać wiele transakcji.
 2. Metody modelowania procesów biznesowych
@@ -104,7 +111,6 @@ Behawioralne: przypadków użycia, sekwencji, aktywności, stanów.
 51. Model sieciowy OSI
 7 warstw: fizyczna, łącza danych, sieciowa, transportowa, sesji, prezentacji, aplikacji. Ułatwia standaryzację protokołów.
 
-
 🔹 Model OSI (Open Systems Interconnection)
 To teoretyczny model odniesienia opracowany przez ISO, żeby opisać, jak systemy komputerowe komunikują się w sieci.
 Dzieli komunikację na 7 warstw, każda realizuje określone zadania:
@@ -124,14 +130,15 @@ Internet – odpowiada warstwie 3 OSI (protokoły: IP, ICMP).
 Transport – odpowiada warstwie 4 OSI (TCP, UDP).
 Aplikacji – odpowiada warstwom 5–7 OSI (HTTP, FTP, SMTP, DNS).
 🔹 OSI vs TCP/IP – porównanie
-OSI	TCP/IP	Przykłady protokołów
-7. Aplikacji	Aplikacji	HTTP, FTP, SMTP, DNS
-6. Prezentacji	Aplikacji	SSL/TLS, JPEG, ASCII
-5. Sesji	Aplikacji	RPC, NetBIOS
-4. Transportowa	Transport	TCP, UDP
-3. Sieciowa	Internet	IP, ICMP
-2. Łącza danych	Dostępu do sieci	Ethernet, Wi-Fi
-1. Fizyczna	Dostępu do sieci	Kabel, sygnały
+OSI TCP/IP Przykłady protokołów
+7. Aplikacji Aplikacji HTTP, FTP, SMTP, DNS
+6. Prezentacji Aplikacji SSL/TLS, JPEG, ASCII
+5. Sesji Aplikacji RPC, NetBIOS
+4. Transportowa Transport TCP, UDP
+3. Sieciowa Internet IP, ICMP
+2. Łącza danych Dostępu do sieci Ethernet, Wi-Fi
+
+1. Fizyczna Dostępu do sieci Kabel, sygnały
 
 52. Protokoły połączeniowe i bezpołączeniowe
 Połączeniowy – zestawia sesję (np. TCP).
@@ -168,8 +175,6 @@ kolejka (FIFO),
 tablica (indeksowany zbiór),
 drzewo (hierarchia),
 graf (sieć powiązań).
-
-
 
 63. Drzewo decyzyjne
 Model klasyfikacji/regresji, gdzie kolejne pytania dzielą dane na grupy. Używane w ML i systemach ekspertowych.

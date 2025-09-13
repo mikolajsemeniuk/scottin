@@ -36,7 +36,7 @@ func (s *PostgresStorage) Close() error {
 
 func (s *PostgresStorage) FindScooters(ctx context.Context, lat1, lng1, lat2, lng2 float64, status string) ([]Scooter, error) {
 	query := `
-		SELECT id, city, status, COALESCE(latitude, 0), COALESCE(longitude, 0), updated, created
+		SELECT id, city, status, latitude, longitude, updated, created
 		FROM scooters
 		WHERE latitude BETWEEN $1 AND $2
 		AND longitude BETWEEN $3 AND $4
@@ -75,43 +75,56 @@ func (s *PostgresStorage) FindScooters(ctx context.Context, lat1, lng1, lat2, ln
 		return nil, fmt.Errorf("error iterating scooter rows: %w", err)
 	}
 
-	if len(scooters) == 0 {
-		return nil, ErrNoScootersFound
-	}
-
 	return scooters, nil
 }
 
-func (s *PostgresStorage) UpdateScooter(ctx context.Context, scooter Scooter) error {
-	query := `
-		UPDATE scooters
-		SET status = $2,
-		    latitude = $3,
-		    longitude = $4,
-		    updated = $5
-		WHERE id = $1
-	`
+func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
+	tx, err := s.store.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
-	args := []any{
-		scooter.ID,
-		scooter.Status,
-		scooter.Latitude,
-		scooter.Longitude,
-		time.Now().UTC(),
+	var status string
+	err = tx.QueryRowContext(ctx, "SELECT status FROM scooters WHERE id = $1", sc.ID).Scan(&status)
+	if err == sql.ErrNoRows {
+		return ErrScooterNotFound
 	}
 
-	result, err := s.store.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("error updating scooter: %w", err)
+		return fmt.Errorf("failed to query scooter status: %w", err)
+	}
+
+	// if currentStatus == "occupied" {
+	// 	return ErrScooterOccupied
+	// }
+
+	if sc.Status == "occupied" && status != "free" {
+		return ErrScooterOccupied
+	}
+
+	if sc.Status == "free" && status != "occupied" {
+		return ErrReleaseScooter
+	}
+
+	args := []any{sc.Status, sc.Latitude, sc.Longitude, sc.Updated, sc.ID}
+
+	result, err := tx.ExecContext(ctx, "UPDATE scooters SET status = $1, latitude = $2, longitude = $3, updated = $4 WHERE id = $5", args...)
+	if err != nil {
+		return fmt.Errorf("failed to update scooter: %w", err)
 	}
 
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("error getting rows affected: %w", err)
+		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
 	if affected == 0 {
-		return ErrScooterNotFound
+		return fmt.Errorf("scooter %s status was changed by another client", sc.ID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
