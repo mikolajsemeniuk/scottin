@@ -28,34 +28,33 @@ type FindScootersInput struct {
 }
 
 func NewFindScootersInput(r *http.Request) (FindScootersInput, error) {
+	var out FindScootersInput
 	query := r.URL.Query()
 
 	lat1, err := strconv.ParseFloat(query.Get("latitude1"), 64)
 	if err != nil {
-		return FindScootersInput{}, ErrCannotParseQuery
+		return out, ErrCannotParseQuery
 	}
 
 	lat2, err := strconv.ParseFloat(query.Get("latitude2"), 64)
 	if err != nil {
-		return FindScootersInput{}, ErrCannotParseQuery
+		return out, ErrCannotParseQuery
 	}
 
 	lng1, err := strconv.ParseFloat(query.Get("longitude1"), 64)
 	if err != nil {
-		return FindScootersInput{}, ErrCannotParseQuery
+		return out, ErrCannotParseQuery
 	}
 
 	lng2, err := strconv.ParseFloat(query.Get("longitude2"), 64)
 	if err != nil {
-		return FindScootersInput{}, ErrCannotParseQuery
+		return out, ErrCannotParseQuery
 	}
 
-	out := FindScootersInput{
-		Latitude1:  lat1,
-		Latitude2:  lat2,
-		Longitude1: lng1,
-		Longitude2: lng2,
-	}
+	out.Latitude1 = lat1
+	out.Latitude2 = lat2
+	out.Longitude1 = lng1
+	out.Longitude2 = lng2
 
 	status := Status(query.Get("status"))
 	if status == "" {
@@ -76,6 +75,7 @@ type UpdateScooterInput struct {
 	Timestamp time.Time `json:"timestamp"`
 	Latitude  float64   `json:"latitude"`
 	Longitude float64   `json:"longitude"`
+	ClientID  string    `json:"client_id"`
 }
 
 func NewUpdateScooterInput(r *http.Request) (UpdateScooterInput, error) {
@@ -103,6 +103,7 @@ type Scooter struct {
 	Status    string    `json:"status"`
 	Latitude  float64   `json:"latitude"`
 	Longitude float64   `json:"longitude"`
+	ClientID  string    `json:"client_id"`
 	Updated   time.Time `json:"updated"`
 	Created   time.Time `json:"created"`
 }

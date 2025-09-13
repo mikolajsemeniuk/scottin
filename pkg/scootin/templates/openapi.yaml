@@ -33,6 +33,9 @@ components:
         longitude:
           type: number
           format: double
+        client_id:
+          type: string
+          description: UUID of the client currently occupying the scooter, empty string if free
         created:
           type: string
           format: date-time
@@ -49,7 +52,7 @@ components:
           schema:
             type: object
             required:
-              - type
+              - status
               - timestamp
             properties:
               status:
@@ -64,6 +67,9 @@ components:
               longitude:
                 type: number
                 format: double
+              client_id:
+                type: string
+                description: UUID of the client (required when occupying, must match when releasing/updating)
 
 paths:
   /scooters/{id}:

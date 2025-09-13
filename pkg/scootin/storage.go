@@ -36,7 +36,7 @@ func (s *PostgresStorage) Close() error {
 
 func (s *PostgresStorage) FindScooters(ctx context.Context, lat1, lng1, lat2, lng2 float64, status string) ([]Scooter, error) {
 	query := `
-		SELECT id, city, status, latitude, longitude, updated, created
+		SELECT id, city, status, latitude, longitude, client_id, updated, created
 		FROM scooters
 		WHERE latitude BETWEEN $1 AND $2
 		AND longitude BETWEEN $3 AND $4
@@ -63,7 +63,7 @@ func (s *PostgresStorage) FindScooters(ctx context.Context, lat1, lng1, lat2, ln
 	scooters := []Scooter{}
 	for rows.Next() {
 		var scooter Scooter
-		dst := []any{&scooter.ID, &scooter.City, &scooter.Status, &scooter.Latitude, &scooter.Longitude, &scooter.Updated, &scooter.Created}
+		dst := []any{&scooter.ID, &scooter.City, &scooter.Status, &scooter.Latitude, &scooter.Longitude, &scooter.ClientID, &scooter.Updated, &scooter.Created}
 		if err := rows.Scan(dst...); err != nil {
 			return nil, fmt.Errorf("error scanning scooter row: %w", err)
 		}
@@ -85,8 +85,8 @@ func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 	}
 	defer tx.Rollback()
 
-	var status string
-	err = tx.QueryRowContext(ctx, "SELECT status FROM scooters WHERE id = $1", sc.ID).Scan(&status)
+	var currentStatus, currentClientID string
+	err = tx.QueryRowContext(ctx, "SELECT status, client_id FROM scooters WHERE id = $1", sc.ID).Scan(&currentStatus, &currentClientID)
 	if err == sql.ErrNoRows {
 		return ErrScooterNotFound
 	}
@@ -95,21 +95,32 @@ func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 		return fmt.Errorf("failed to query scooter status: %w", err)
 	}
 
-	// if currentStatus == "occupied" {
-	// 	return ErrScooterOccupied
-	// }
-
-	if sc.Status == "occupied" && status != "free" {
-		return ErrScooterOccupied
+	// Validate ownership and status transitions
+	if sc.Status == "occupied" && currentStatus == "free" {
+		// Only allow occupation if scooter is free and client provides valid ID
+		if sc.ClientID == "" {
+			return fmt.Errorf("client_id is required when occupying scooter")
+		}
+	} else if sc.Status == "free" && currentStatus == "occupied" {
+		// Only allow release if scooter is occupied and client owns it
+		if sc.ClientID != currentClientID {
+			return fmt.Errorf("only the occupying client can release the scooter")
+		}
+		// Clear client_id when releasing
+		sc.ClientID = ""
+	} else if sc.Status == "occupied" && currentStatus == "occupied" {
+		// Position update during ride - only allow if client owns the scooter
+		if sc.ClientID != currentClientID {
+			return fmt.Errorf("only the occupying client can update scooter position")
+		}
+	} else {
+		// Invalid status transition
+		return fmt.Errorf("invalid status transition from %s to %s", currentStatus, sc.Status)
 	}
 
-	if sc.Status == "free" && status != "occupied" {
-		return ErrReleaseScooter
-	}
+	args := []any{sc.Status, sc.Latitude, sc.Longitude, sc.ClientID, sc.Updated, sc.ID}
 
-	args := []any{sc.Status, sc.Latitude, sc.Longitude, sc.Updated, sc.ID}
-
-	result, err := tx.ExecContext(ctx, "UPDATE scooters SET status = $1, latitude = $2, longitude = $3, updated = $4 WHERE id = $5", args...)
+	result, err := tx.ExecContext(ctx, "UPDATE scooters SET status = $1, latitude = $2, longitude = $3, client_id = $4, updated = $5 WHERE id = $6", args...)
 	if err != nil {
 		return fmt.Errorf("failed to update scooter: %w", err)
 	}

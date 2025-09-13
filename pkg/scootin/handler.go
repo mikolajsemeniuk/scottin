@@ -71,6 +71,7 @@ func (h *HTTPHandler) UpdateScooter(w http.ResponseWriter, r *http.Request) {
 		Status:    string(input.Status),
 		Latitude:  input.Latitude,
 		Longitude: input.Longitude,
+		ClientID:  input.ClientID,
 		Updated:   input.Timestamp,
 	}
 

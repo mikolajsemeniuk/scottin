@@ -6,6 +6,7 @@ CREATE TABLE scooters (
     status TEXT NOT NULL DEFAULT 'free' CHECK (status IN ('free', 'occupied')),
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
+    client_id TEXT NOT NULL DEFAULT '',
     created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

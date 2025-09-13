@@ -7,21 +7,23 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/mikolajsemeniuk/nord/pkg/scootin"
 )
 
 type Config struct {
-	APIBaseURL   string        `envconfig:"API_BASE_URL" default:"http://localhost:8080"`
-	NumClients   int           `envconfig:"NUM_CLIENTS" default:"2"`
+	APIBaseURL   string        `envconfig:"API_BASE_URL"  default:"http://localhost:8080"`
+	NumClients   int           `envconfig:"NUM_CLIENTS"   default:"2"`
 	RideDuration time.Duration `envconfig:"RIDE_DURATION" default:"10s"`
 	WaitDuration time.Duration `envconfig:"WAIT_DURATION" default:"5s"`
-	MaxRetries   int           `envconfig:"MAX_RETRIES" default:"3"`
-	RetryDelay   time.Duration `envconfig:"RETRY_DELAY" default:"1s"`
+	MaxRetries   int           `envconfig:"MAX_RETRIES"   default:"3"`
+	RetryDelay   time.Duration `envconfig:"RETRY_DELAY"   default:"1s"`
 }
 
 func main() {
@@ -47,11 +49,10 @@ func main() {
 		go func(num int) {
 			defer wg.Done()
 
-			clientID := fmt.Sprintf("Client-%d", num+1)
 			client := &TrafficClient{
-				clientID:   clientID,
+				clientID:   uuid.New().String(),
 				apiBaseURL: cfg.APIBaseURL,
-				httpClient: &http.Client{Timeout: 30 * time.Second},
+				httpClient: http.DefaultClient,
 				logger:     log.New(log.Writer(), "", log.LstdFlags),
 			}
 			client.RunClient(ctx, cfg)
@@ -105,6 +106,7 @@ func (tc *TrafficClient) ReserveScooter(ctx context.Context, s scootin.Scooter) 
 		Status:    "occupied",
 		Latitude:  s.Latitude,
 		Longitude: s.Longitude,
+		ClientID:  tc.clientID,
 		Timestamp: time.Now().UTC(),
 	}
 
@@ -148,6 +150,7 @@ func (tc *TrafficClient) ReleaseScooter(ctx context.Context, s scootin.Scooter) 
 		Status:    "free",
 		Latitude:  s.Latitude,
 		Longitude: s.Longitude,
+		ClientID:  tc.clientID,
 		Timestamp: time.Now().UTC(),
 	}
 
@@ -175,6 +178,43 @@ func (tc *TrafficClient) ReleaseScooter(ctx context.Context, s scootin.Scooter) 
 	}
 
 	tc.logger.Printf("%s: ✅ Successfully released scooter %s", tc.clientID, s.ID)
+	return nil
+}
+
+func (tc *TrafficClient) UpdateScooterPosition(ctx context.Context, s scootin.Scooter, newLat, newLng float64) error {
+	tc.logger.Printf("%s: 📍 Updating scooter %s position to (%.6f, %.6f)", tc.clientID, s.ID, newLat, newLng)
+
+	input := scootin.UpdateScooterInput{
+		Status:    "occupied",
+		Latitude:  newLat,
+		Longitude: newLng,
+		ClientID:  tc.clientID,
+		Timestamp: time.Now().UTC(),
+	}
+
+	data, err := json.Marshal(input)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/scooters/%s", tc.apiBaseURL, s.ID)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := tc.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("API returned status %d: %s", res.StatusCode, string(body))
+	}
+
 	return nil
 }
 
@@ -211,7 +251,27 @@ func (tc *TrafficClient) SimulateRide(ctx context.Context, cfg Config) error {
 	}
 
 	tc.logger.Printf("%s: 🏍️  Riding scooter %s for %v...", tc.clientID, reserved.ID, cfg.RideDuration)
-	time.Sleep(cfg.RideDuration)
+
+	currentLat := reserved.Latitude
+	currentLng := reserved.Longitude
+	rideStart := time.Now()
+
+	for time.Since(rideStart) < cfg.RideDuration {
+		latDelta := (rand.Float64() - 0.5) * 0.001
+		lngDelta := (rand.Float64() - 0.5) * 0.001
+
+		currentLat += latDelta
+		currentLng += lngDelta
+
+		if err := tc.UpdateScooterPosition(ctx, *reserved, currentLat, currentLng); err != nil {
+			tc.logger.Printf("%s: ⚠️  Failed to update position: %v", tc.clientID, err)
+		}
+
+		time.Sleep(3 * time.Second)
+	}
+
+	reserved.Latitude = currentLat
+	reserved.Longitude = currentLng
 
 	if err := tc.ReleaseScooter(ctx, *reserved); err != nil {
 		return fmt.Errorf("failed to release scooter: %w", err)
