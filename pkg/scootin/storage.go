@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
 
@@ -78,6 +79,48 @@ func (s *PostgresStorage) FindScooters(ctx context.Context, lat1, lng1, lat2, ln
 	return scooters, nil
 }
 
+func (s *PostgresStorage) FindScooter(ctx context.Context, id uuid.UUID) (*Scooter, error) {
+	var scooter Scooter
+	query := "SELECT id, city, status, latitude, longitude, client_id, updated, created FROM scooters WHERE id = $1"
+	args := []any{&scooter.ID, &scooter.City, &scooter.Status, &scooter.Latitude, &scooter.Longitude, &scooter.ClientID, &scooter.Updated, &scooter.Created}
+	err := s.store.QueryRowContext(ctx, query, id).Scan(args...)
+	if err == sql.ErrNoRows {
+		return nil, ErrScooterNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query scooter: %w", err)
+	}
+
+	return &scooter, nil
+}
+
+func (s *PostgresStorage) ValidateScooterUpdate(currentScooter *Scooter, updateScooter Scooter) error {
+	// Validate ownership and status transitions
+	if updateScooter.Status == "occupied" && currentScooter.Status == "free" {
+		// Only allow occupation if scooter is free and client provides valid ID
+		if updateScooter.ClientID == "" {
+			return fmt.Errorf("client_id is required when occupying scooter")
+		}
+	} else if updateScooter.Status == "free" && currentScooter.Status == "occupied" {
+		// Only allow release if scooter is occupied and client owns it
+		if updateScooter.ClientID != currentScooter.ClientID {
+			return fmt.Errorf("only the occupying client can release the scooter")
+		}
+		// Clear client_id when releasing
+		updateScooter.ClientID = ""
+	} else if updateScooter.Status == "occupied" && currentScooter.Status == "occupied" {
+		// Position update during ride - only allow if client owns the scooter
+		if updateScooter.ClientID != currentScooter.ClientID {
+			return fmt.Errorf("only the occupying client can update scooter position")
+		}
+	} else {
+		// Invalid status transition
+		return fmt.Errorf("invalid status transition from %s to %s", currentScooter.Status, updateScooter.Status)
+	}
+	return nil
+}
+
 func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 	tx, err := s.store.BeginTx(ctx, nil)
 	if err != nil {
@@ -85,37 +128,13 @@ func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 	}
 	defer tx.Rollback()
 
-	var currentStatus, currentClientID string
-	err = tx.QueryRowContext(ctx, "SELECT status, client_id FROM scooters WHERE id = $1", sc.ID).Scan(&currentStatus, &currentClientID)
-	if err == sql.ErrNoRows {
-		return ErrScooterNotFound
-	}
-
+	currentScooter, err := s.FindScooter(ctx, sc.ID)
 	if err != nil {
-		return fmt.Errorf("failed to query scooter status: %w", err)
+		return err
 	}
 
-	// Validate ownership and status transitions
-	if sc.Status == "occupied" && currentStatus == "free" {
-		// Only allow occupation if scooter is free and client provides valid ID
-		if sc.ClientID == "" {
-			return fmt.Errorf("client_id is required when occupying scooter")
-		}
-	} else if sc.Status == "free" && currentStatus == "occupied" {
-		// Only allow release if scooter is occupied and client owns it
-		if sc.ClientID != currentClientID {
-			return fmt.Errorf("only the occupying client can release the scooter")
-		}
-		// Clear client_id when releasing
-		sc.ClientID = ""
-	} else if sc.Status == "occupied" && currentStatus == "occupied" {
-		// Position update during ride - only allow if client owns the scooter
-		if sc.ClientID != currentClientID {
-			return fmt.Errorf("only the occupying client can update scooter position")
-		}
-	} else {
-		// Invalid status transition
-		return fmt.Errorf("invalid status transition from %s to %s", currentStatus, sc.Status)
+	if err := s.ValidateScooterUpdate(currentScooter, sc); err != nil {
+		return err
 	}
 
 	args := []any{sc.Status, sc.Latitude, sc.Longitude, sc.ClientID, sc.Updated, sc.ID}

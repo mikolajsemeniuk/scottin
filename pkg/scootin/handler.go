@@ -6,10 +6,13 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 type Storage interface {
 	FindScooters(ctx context.Context, lat1, lng1, lat2, lng2 float64, status string) ([]Scooter, error)
+	FindScooter(ctx context.Context, id uuid.UUID) (*Scooter, error)
 	UpdateScooter(ctx context.Context, scooter Scooter) error
 	Close() error
 }
