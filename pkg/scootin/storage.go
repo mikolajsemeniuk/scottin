@@ -95,29 +95,26 @@ func (s *PostgresStorage) FindScooter(ctx context.Context, id uuid.UUID) (*Scoot
 	return &scooter, nil
 }
 
-func (s *PostgresStorage) ValidateScooterUpdate(currentScooter *Scooter, updateScooter Scooter) error {
-	// Validate ownership and status transitions
-	if updateScooter.Status == "occupied" && currentScooter.Status == "free" {
-		// Only allow occupation if scooter is free and client provides valid ID
-		if updateScooter.ClientID == "" {
-			return fmt.Errorf("client_id is required when occupying scooter")
-		}
-	} else if updateScooter.Status == "free" && currentScooter.Status == "occupied" {
-		// Only allow release if scooter is occupied and client owns it
-		if updateScooter.ClientID != currentScooter.ClientID {
-			return fmt.Errorf("only the occupying client can release the scooter")
-		}
-		// Clear client_id when releasing
-		updateScooter.ClientID = ""
-	} else if updateScooter.Status == "occupied" && currentScooter.Status == "occupied" {
-		// Position update during ride - only allow if client owns the scooter
-		if updateScooter.ClientID != currentScooter.ClientID {
-			return fmt.Errorf("only the occupying client can update scooter position")
-		}
-	} else {
-		// Invalid status transition
-		return fmt.Errorf("invalid status transition from %s to %s", currentScooter.Status, updateScooter.Status)
+func (s *PostgresStorage) validateScooterUpdate(current *Scooter, updated Scooter) error {
+	// Only allow occupation if scooter is free and client provides valid ID.
+	if updated.Status == "occupied" && current.Status == "free" && updated.ClientID == "" {
+		return ErrClientIDRequired
 	}
+
+	// Position update during ride - only allow if client owns the scooter.
+	if updated.Status == "occupied" && current.Status == "occupied" && updated.ClientID != current.ClientID {
+		return ErrOnlyOccupyingClientCanUpdate
+	}
+
+	// Only allow release if scooter is occupied and client owns it.
+	if updated.Status == "free" && current.Status == "occupied" && updated.ClientID != current.ClientID {
+		return ErrOnlyOccupyingClientCanRelease
+
+	}
+
+	// Clear client_id when releasing.
+	updated.ClientID = ""
+
 	return nil
 }
 
@@ -133,7 +130,7 @@ func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 		return err
 	}
 
-	if err := s.ValidateScooterUpdate(currentScooter, sc); err != nil {
+	if err := s.validateScooterUpdate(currentScooter, sc); err != nil {
 		return err
 	}
 

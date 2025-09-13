@@ -3,7 +3,6 @@ package scootin
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"html/template"
 	"net/http"
 
@@ -79,16 +78,6 @@ func (h *HTTPHandler) UpdateScooter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = h.storage.UpdateScooter(ctx, scooter)
-	if errors.Is(err, ErrScooterNotFound) {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	if errors.Is(err, ErrScooterOccupied) || errors.Is(err, ErrReleaseScooter) {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
