@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -55,10 +56,10 @@ func main() {
 		IdleTimeout:  cfg.IdleTimeout,
 	}
 
-	// Make sure the server is shutdown gracefully, specialy important in K8S environment.
+	// Make sure the server is shutdown gracefully, specially important in K8S environment.
 	go func() {
 		log.Printf("Starting server on %s", cfg.Listen)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("Failed to start server: %v", err)
 		}
 	}()

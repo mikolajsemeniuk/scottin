@@ -3,11 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -18,12 +19,22 @@ import (
 )
 
 type Config struct {
-	APIBaseURL   string        `envconfig:"API_BASE_URL"  default:"http://localhost:8080"`
-	NumClients   int           `envconfig:"NUM_CLIENTS"   default:"3"`
-	RideDuration time.Duration `envconfig:"RIDE_DURATION" default:"10s"`
-	WaitDuration time.Duration `envconfig:"WAIT_DURATION" default:"5s"`
-	MaxRetries   int           `envconfig:"MAX_RETRIES"   default:"3"`
-	RetryDelay   time.Duration `envconfig:"RETRY_DELAY"   default:"1s"`
+	APIBaseURL   string        `default:"http://localhost:8080" envconfig:"API_BASE_URL"`
+	NumClients   int           `default:"3"                     envconfig:"NUM_CLIENTS"`
+	RideDuration time.Duration `default:"10s"                   envconfig:"RIDE_DURATION"`
+	WaitDuration time.Duration `default:"5s"                    envconfig:"WAIT_DURATION"`
+	MaxRetries   int           `default:"3"                     envconfig:"MAX_RETRIES"`
+	RetryDelay   time.Duration `default:"1s"                    envconfig:"RETRY_DELAY"`
+}
+
+func randomFloat64() float64 {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return 0
+	}
+	bits := binary.LittleEndian.Uint64(buf[:])
+
+	return float64(int64(bits)%1000-500) / 1000.0 //nolint:gosec
 }
 
 func main() {
@@ -44,9 +55,9 @@ func main() {
 	defer cancel()
 
 	var wg sync.WaitGroup
-	for i := 0; i < cfg.NumClients; i++ {
+	for range cfg.NumClients {
 		wg.Add(1)
-		go func(num int) {
+		go func() {
 			defer wg.Done()
 
 			client := &TrafficClient{
@@ -56,7 +67,7 @@ func main() {
 				logger:     log.New(log.Writer(), "", log.LstdFlags),
 			}
 			client.RunClient(ctx, cfg)
-		}(i)
+		}()
 	}
 
 	wg.Wait()
@@ -73,8 +84,8 @@ type TrafficClient struct {
 func (tc *TrafficClient) FindFreeScooters(ctx context.Context) ([]scootin.Scooter, error) {
 	tc.logger.Printf("%s: 🔍 Searching for free scooters...", tc.clientID)
 
-	url := fmt.Sprintf("%s/api/v1/scooters?latitude1=-100&longitude1=-100&latitude2=100&longitude2=100&status=free", tc.apiBaseURL)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	url := tc.apiBaseURL + "/api/v1/scooters?latitude1=-100&longitude1=-100&latitude2=100&longitude2=100&status=free"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -87,7 +98,7 @@ func (tc *TrafficClient) FindFreeScooters(ctx context.Context) ([]scootin.Scoote
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
-		return nil, fmt.Errorf("API returned status %d: %s", res.StatusCode, string(body))
+		return nil, fmt.Errorf("%w: status %d: %s", scootin.ErrAPIRequestFailed, res.StatusCode, string(body))
 	}
 
 	var scooters []scootin.Scooter
@@ -96,6 +107,7 @@ func (tc *TrafficClient) FindFreeScooters(ctx context.Context) ([]scootin.Scoote
 	}
 
 	tc.logger.Printf("%s: ✅ Found %d free scooters", tc.clientID, len(scooters))
+
 	return scooters, nil
 }
 
@@ -115,8 +127,8 @@ func (tc *TrafficClient) ReserveScooter(ctx context.Context, s scootin.Scooter) 
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/scooters/%s", tc.apiBaseURL, s.ID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	url := tc.apiBaseURL + "/api/v1/scooters/" + s.ID.String()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -131,15 +143,16 @@ func (tc *TrafficClient) ReserveScooter(ctx context.Context, s scootin.Scooter) 
 	if res.StatusCode == http.StatusConflict {
 		body, _ := io.ReadAll(res.Body)
 		tc.logger.Printf("%s: ⚠️  Scooter %s is already reserved: %s", tc.clientID, s.ID, string(body))
-		return fmt.Errorf("scooter already reserved")
+		return scootin.ErrScooterAlreadyReserved
 	}
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
-		return fmt.Errorf("API returned status %d: %s", res.StatusCode, string(body))
+		return fmt.Errorf("%w: status %d: %s", scootin.ErrAPIRequestFailed, res.StatusCode, string(body))
 	}
 
 	tc.logger.Printf("%s: ✅ Successfully reserved scooter %s", tc.clientID, s.ID)
+
 	return nil
 }
 
@@ -159,8 +172,8 @@ func (tc *TrafficClient) ReleaseScooter(ctx context.Context, s scootin.Scooter) 
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/scooters/%s", tc.apiBaseURL, s.ID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	url := tc.apiBaseURL + "/api/v1/scooters/" + s.ID.String()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -174,10 +187,11 @@ func (tc *TrafficClient) ReleaseScooter(ctx context.Context, s scootin.Scooter) 
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
-		return fmt.Errorf("API returned status %d: %s", res.StatusCode, string(body))
+		return fmt.Errorf("%w: status %d: %s", scootin.ErrAPIRequestFailed, res.StatusCode, string(body))
 	}
 
 	tc.logger.Printf("%s: ✅ Successfully released scooter %s", tc.clientID, s.ID)
+
 	return nil
 }
 
@@ -197,8 +211,8 @@ func (tc *TrafficClient) UpdateScooterPosition(ctx context.Context, s scootin.Sc
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/scooters/%s", tc.apiBaseURL, s.ID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	url := tc.apiBaseURL + "/api/v1/scooters/" + s.ID.String()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -212,7 +226,7 @@ func (tc *TrafficClient) UpdateScooterPosition(ctx context.Context, s scootin.Sc
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
-		return fmt.Errorf("API returned status %d: %s", res.StatusCode, string(body))
+		return fmt.Errorf("%w: status %d: %s", scootin.ErrAPIRequestFailed, res.StatusCode, string(body))
 	}
 
 	return nil
@@ -226,11 +240,11 @@ func (tc *TrafficClient) SimulateRide(ctx context.Context, cfg Config) error {
 
 	if len(scooters) == 0 {
 		tc.logger.Printf("%s: 😞 No free scooters available, waiting...", tc.clientID)
-		return fmt.Errorf("no free scooters available")
+		return scootin.ErrNoFreeScooters
 	}
 
 	var reserved *scootin.Scooter
-	for i := 0; i < cfg.MaxRetries; i++ {
+	for i := range cfg.MaxRetries {
 		scooter := scooters[i%len(scooters)]
 
 		if err := tc.ReserveScooter(ctx, scooter); err == nil {
@@ -247,7 +261,7 @@ func (tc *TrafficClient) SimulateRide(ctx context.Context, cfg Config) error {
 
 	if reserved == nil {
 		tc.logger.Printf("❌ Failed to reserve any scooter after %d attempts", cfg.MaxRetries)
-		return fmt.Errorf("failed to reserve scooter after %d attempts", cfg.MaxRetries)
+		return fmt.Errorf("%w: after %d attempts", scootin.ErrReservationFailed, cfg.MaxRetries)
 	}
 
 	tc.logger.Printf("%s: 🏍️  Riding scooter %s for %v...", tc.clientID, reserved.ID, cfg.RideDuration)
@@ -257,8 +271,8 @@ func (tc *TrafficClient) SimulateRide(ctx context.Context, cfg Config) error {
 	rideStart := time.Now()
 
 	for time.Since(rideStart) < cfg.RideDuration {
-		latDelta := (rand.Float64() - 0.5) * 0.001
-		lngDelta := (rand.Float64() - 0.5) * 0.001
+		latDelta := randomFloat64() * 0.001
+		lngDelta := randomFloat64() * 0.001
 
 		currentLat += latDelta
 		currentLng += lngDelta
@@ -278,6 +292,7 @@ func (tc *TrafficClient) SimulateRide(ctx context.Context, cfg Config) error {
 	}
 
 	tc.logger.Printf("%s: 🎉 Ride completed successfully!", tc.clientID)
+
 	return nil
 }
 

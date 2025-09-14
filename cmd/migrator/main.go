@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"log"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -14,9 +15,9 @@ import (
 var migrationsFS embed.FS
 
 type config struct {
-	DSN           string `envconfig:"DATABASE_URL"   default:"postgres://wishlist:P@ssw0rd@localhost:5432/wishlist?sslmode=disable"`
-	MigrationsDir string `envconfig:"MIGRATIONS_DIR" default:"migrations"`
-	Version       uint   `envconfig:"VERSION"        default:"1"`
+	DSN           string `default:"postgres://wishlist:P@ssw0rd@localhost:5432/wishlist?sslmode=disable" envconfig:"DATABASE_URL"`
+	MigrationsDir string `default:"migrations"                                                           envconfig:"MIGRATIONS_DIR"`
+	Version       uint   `default:"1"                                                                    envconfig:"VERSION"`
 }
 
 func main() {
@@ -47,7 +48,7 @@ func main() {
 		log.Printf("Successfully migrated to version %d\n", cfg.Version)
 	}()
 
-	if err := instance.Migrate(cfg.Version); err != nil && err != migrate.ErrNoChange {
+	if err := instance.Migrate(cfg.Version); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		log.Printf("Failed to migrate to version %d: %v", cfg.Version, err)
 		return
 	}

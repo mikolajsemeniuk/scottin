@@ -11,9 +11,9 @@ import (
 )
 
 type config struct {
-	DSN           string `envconfig:"DATABASE_URL"   default:"postgres://wishlist:P@ssw0rd@localhost:5432/wishlist?sslmode=disable"`
-	MigrationsDir string `envconfig:"MIGRATIONS_DIR" default:"migrations"`
-	Version       uint   `envconfig:"VERSION"        default:"1"`
+	DSN           string `default:"postgres://wishlist:P@ssw0rd@localhost:5432/wishlist?sslmode=disable" envconfig:"DATABASE_URL"`
+	MigrationsDir string `default:"migrations"                                                           envconfig:"MIGRATIONS_DIR"`
+	Version       uint   `default:"1"                                                                    envconfig:"VERSION"`
 }
 
 //go:embed seed.sql

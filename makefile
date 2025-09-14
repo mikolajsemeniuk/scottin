@@ -1,4 +1,4 @@
-.PHONY: setup run traffic
+.PHONY: setup run spawn
 
 start: setup run
 

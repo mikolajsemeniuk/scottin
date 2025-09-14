@@ -2,6 +2,7 @@ package scootin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -92,7 +93,7 @@ func NewUpdateScooterInput(r *http.Request) (UpdateScooterInput, error) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&out); err != nil {
-		return out, err
+		return out, fmt.Errorf("failed to decode request body: %w", err)
 	}
 
 	if err := out.Status.Valid(); err != nil {
