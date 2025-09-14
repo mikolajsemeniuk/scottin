@@ -11,8 +11,13 @@ import (
 
 type Status string
 
+const (
+	StatusFree     = Status("free")
+	StatusOccupied = Status("occupied")
+)
+
 func (s Status) Valid() error {
-	if s != "free" && s != "occupied" {
+	if s != StatusFree && s != StatusOccupied {
 		return ErrStatusInvalid
 	}
 
@@ -66,6 +71,7 @@ func NewFindScootersInput(r *http.Request) (FindScootersInput, error) {
 	}
 
 	out.Status = status
+
 	return out, nil
 }
 
@@ -94,6 +100,7 @@ func NewUpdateScooterInput(r *http.Request) (UpdateScooterInput, error) {
 	}
 
 	out.ID = ID
+
 	return out, nil
 }
 

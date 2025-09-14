@@ -95,29 +95,6 @@ func (s *PostgresStorage) FindScooter(ctx context.Context, id uuid.UUID) (*Scoot
 	return &scooter, nil
 }
 
-func (s *PostgresStorage) validateScooterUpdate(current *Scooter, updated Scooter) error {
-	// Only allow occupation if scooter is free and client provides valid ID.
-	if updated.Status == "occupied" && current.Status == "free" && updated.ClientID == "" {
-		return ErrClientIDRequired
-	}
-
-	// Position update during ride - only allow if client owns the scooter.
-	if updated.Status == "occupied" && current.Status == "occupied" && updated.ClientID != current.ClientID {
-		return ErrOnlyOccupyingClientCanUpdate
-	}
-
-	// Only allow release if scooter is occupied and client owns it.
-	if updated.Status == "free" && current.Status == "occupied" && updated.ClientID != current.ClientID {
-		return ErrOnlyOccupyingClientCanRelease
-
-	}
-
-	// Clear client_id when releasing.
-	updated.ClientID = ""
-
-	return nil
-}
-
 func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 	tx, err := s.store.BeginTx(ctx, nil)
 	if err != nil {
@@ -125,17 +102,53 @@ func (s *PostgresStorage) UpdateScooter(ctx context.Context, sc Scooter) error {
 	}
 	defer tx.Rollback()
 
-	current, err := s.FindScooter(ctx, sc.ID)
+	query := `
+		SELECT id, city, status, latitude, longitude, client_id, updated, created 
+		FROM scooters
+		WHERE id = $1
+	`
+
+	var current Scooter
+	args := []any{
+		&current.ID, &current.City, &current.Status, &current.Latitude,
+		&current.Longitude, &current.ClientID, &current.Updated, &current.Created,
+	}
+
+	err = tx.QueryRowContext(ctx, query, sc.ID).Scan(args...)
+	if err == sql.ErrNoRows {
+		return ErrScooterNotFound
+	}
+
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to query scooter: %w", err)
 	}
 
-	if err := s.validateScooterUpdate(current, sc); err != nil {
-		return err
+	// Only allow occupation if scooter is free and client provides valid ID.
+	if sc.Status == string(StatusOccupied) && current.Status == string(StatusFree) && sc.ClientID == "" {
+		return ErrClientIDRequired
 	}
 
-	query := "UPDATE scooters SET status = $1, latitude = $2, longitude = $3, client_id = $4, updated = $5 WHERE id = $6"
-	args := []any{sc.Status, sc.Latitude, sc.Longitude, sc.ClientID, sc.Updated, sc.ID}
+	// Prevent occupation of already occupied scooter by different client
+	if sc.Status == string(StatusOccupied) && current.Status == string(StatusOccupied) && sc.ClientID != current.ClientID {
+		return ErrScooterAlreadyOccupied
+	}
+
+	// Only allow release if scooter is occupied and client owns it.
+	if sc.Status == string(StatusFree) && current.Status == string(StatusOccupied) && sc.ClientID != current.ClientID {
+		return ErrOnlyOccupyingClientCanRelease
+	}
+
+	query = `
+		UPDATE scooters 
+		SET status = $1, latitude = $2, longitude = $3, client_id = $4, updated = $5 
+		WHERE id = $6
+	`
+
+	args = []any{
+		sc.Status, sc.Latitude, sc.Longitude,
+		sc.ClientID, sc.Updated, sc.ID,
+	}
+
 	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update scooter: %w", err)

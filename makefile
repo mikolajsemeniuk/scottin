@@ -12,5 +12,5 @@ setup:
 	go run cmd/migrator/main.go
 	go run cmd/seeder/main.go
 
-traffic:
-	go run cmd/simulator/main.go
+spawn:
+	go run cmd/spawner/main.go

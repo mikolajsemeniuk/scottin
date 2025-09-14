@@ -19,7 +19,7 @@ import (
 
 type Config struct {
 	APIBaseURL   string        `envconfig:"API_BASE_URL"  default:"http://localhost:8080"`
-	NumClients   int           `envconfig:"NUM_CLIENTS"   default:"2"`
+	NumClients   int           `envconfig:"NUM_CLIENTS"   default:"3"`
 	RideDuration time.Duration `envconfig:"RIDE_DURATION" default:"10s"`
 	WaitDuration time.Duration `envconfig:"WAIT_DURATION" default:"5s"`
 	MaxRetries   int           `envconfig:"MAX_RETRIES"   default:"3"`
@@ -238,7 +238,7 @@ func (tc *TrafficClient) SimulateRide(ctx context.Context, cfg Config) error {
 			break
 		}
 
-		tc.logger.Printf("%s: ⚠️  Reservation attempt %d failed: %v", tc.clientID, i+1, err)
+		tc.logger.Printf("%s: ⚠️  Reservation attempt %d failed, scooter %s is already occupied", tc.clientID, i+1, scooter.ID)
 		if i < cfg.MaxRetries-1 {
 			tc.logger.Printf("⏳ Retrying in %v...", cfg.RetryDelay)
 			time.Sleep(cfg.RetryDelay)
